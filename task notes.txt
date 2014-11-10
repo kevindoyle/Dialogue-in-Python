@@ -1,0 +1,29 @@
+markers to separate edited space
+
+   initially: test each method on its own
+   
+   FIRST: do word limit and show results
+   
+
+   word limit (to nearest sentence boundary) 
+      -50
+      -70
+      -150
+   topic change/shift
+   sentence count
+
+   rules/ideas for breaking up:
+      Continuing subject, noun->pronoun
+      because continues
+      word,
+      
+     First priority? Check for paragraph formatting first, alternative methods second.
+      parse and check for returns/blank lines, use existing formatting 
+         -for small paragraphs, merge to 
+         
+   
+varying sentence distribution
+
+speaker repetitiion, question answering
+
+other parameters

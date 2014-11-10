@@ -1,3 +1,18 @@
+############################
+## dipy.py
+##
+## written by Kevin Doyle
+##
+## Reformats a narrative blog story into
+## conversational format
+##
+## editing: Points of interest are
+##          labelled with DBUG or NOTE
+##
+############################
+
+
+
 import nltk
 import re
 import random
@@ -58,6 +73,11 @@ def conj_split( sent ):
    
    return ( first, second )
    
+# Checks for specific POS patterns
+# NOTE: 2014-11-10 If a sentence matches the given pattern twice or 
+#       more, currently only the last match is stored and returned.
+# NOTE: 2014-11-10 Please change the name of this function, it is not
+#       simulating entrainment
 def entrain( word_list, pos_list ):
    global storage_array
    have_dt = have_nn = have_vb = have_in = have_prp = have_nn2 = False
@@ -65,11 +85,20 @@ def entrain( word_list, pos_list ):
    phrase = []
    reset = False
    
+   # Collapses the POS list into a single string
    pos_mash = ''.join( pos_list )
+   
+   # A regex pattern is used to check for the existence of the desired
+   # pattern within the POS string 
    match = re.search( r'DTNN.?VBDIN', pos_mash )
+   
+   # If the regex pattern matches, then the following is used to 
+   # extract the words with correspond with the POS pattern
    if match is not None:
       for ( idx, word ), pos in zip( enumerate( word_list ), pos_list ):
 
+         # If a POS matches, a boolean is changed to allow for the
+         # next match to be assessed. 
          if pos == "DT":
             dt = word
             have_dt = True
@@ -80,11 +109,21 @@ def entrain( word_list, pos_list ):
          elif have_nn and pos.startswith( 'VBD' ):
             vb = word
             have_vb = True
+            #have_nn = False DBUG: 2014-11-10 I think these should be added, cant test right now so leaving commented out
+            #have_dt = False
          elif have_vb and pos == "IN":
             ni = word
             have_in = True
+            #have_dt = False DBUG: see above
+            #have_nn = False
             have_vb = False
             phrase = [ dt, nn, vb, ni ]
+            
+         # At this point, the original pattern has been matched and
+         # saved into 'phrase'. The following is a check for an 
+         # extension of the original pattern, adding PRP$ N.? 
+         # to account for the indefinite IN leading to a speaker's
+         # possession. 
          elif have_in and pos == "PRP$":
             prp = word
             have_prp = True
@@ -100,6 +139,7 @@ def entrain( word_list, pos_list ):
          else:
             reset = True
             
+         # Resets all boolean values, to prep for next iteration
          if reset:
             have_dt = False
             have_nn = False
@@ -198,7 +238,8 @@ def initial_tagging( ):
          pos.pop(0)
          tag_record_array[idx].append( "WC_TAG" )
 
-
+# Fills an array with tags for edits applicable to each corresponding
+# sentence
 def edit_tagging( ):
    global tagged_word_array
    global tagged_pos_array
@@ -216,28 +257,50 @@ def edit_tagging( ):
    # Conjugation
    
    for (idx, sent), pos_sent in zip( enumerate( tagged_word_array ), tagged_pos_array ):
+   
+      # First sentence is tagged
       if idx == 0:
+      
          # First Sentence
          tag_record_array[idx].append( "FIRST_TAG" )
          
+      # Every fifth sentence, starting at the second, is tagged 
       if (idx + 1) % 5 is 2:
+      
          # Yeah,
          tag_record_array[idx].append( "YEAH_TAG" )
          
+      # Create a set of nouns from the current sentence
       current_nouns = set( [ word for word, pos in zip( tagged_word_array[idx], tagged_pos_array[idx] ) if pos.startswith('N') ] )
+      
+      # Union with set from previous sentence, check for common terms
       if len( prev_nouns & current_nouns ) > 0:
+      
          # Running Topic
+         # Overlapping nouns are saved
          topic_nouns = prev_nouns & current_nouns
          storage_array[idx].append( ( topic_nouns.pop(), "TOPIC_TAG" ) )
          tag_record_array[idx].append( "TOPIC_TAG" )
+         
+      # Current is assigned to prev, for use in next iteration
       prev_nouns = current_nouns 
          
+      # Checks for a rule-determined POS pattern, returns words
       repeat_phrase = entrain( sent, pos_sent )
+      
+      # Verifies that a match was made
       if len( repeat_phrase ) > 1:
-         # Repeat Phrase ( Entrainment )
+      
+         # Repeat Phrase
+         # Tags the next sentence with "ENTRAIN_TAG" and stores the
+         # phrase, because the phrase will be inserted into the following
+         # sentence at a later point
          storage_array[idx+1].append( ( repeat_phrase, "ENTRAIN_TAG" ) )
          tag_record_array[idx+1].append( "ENTRAIN_TAG" )
          
+      # Checks the sentence for words associated with conjugation
+      # NOTE: 2014-11-10 Currently 'but' is the only conjugation case 
+      #       dealt with by this function
       if len( set( sent ) & conj_words ) > 0:
          # Conjugation
          tag_record_array[idx].append( "CONJ_TAG" )
@@ -275,14 +338,26 @@ def edit_mixer( ):
    assert len( tag_record_array ) == len( tag_record_revision ), "Tag Records Length Mismatch"
    tag_record_array = tag_record_revision
          
+# Applies rules for edit distribution
 def edit_planner( ):
    global tag_record_array
    global sent_count
    wc = False
    
+   # NOTE: 2014-11-10 This only deals with two tags,
+   #       and doesn't allow for any interesting combinations
+   #       to occur. This should be re-examined
+   
+   # Iterates through each list of tags for each sentence
    for idx, tags in enumerate( tag_record_array ):
+   
+      # TOPIC_TAG check
       if tags.count( "TOPIC_TAG" ) > 0:
-         # TOPIC TAGS
+         # Priority is given to the running topic tags,
+         # they are distributed first.
+         
+         # Removes all tags from this sentence
+         # DBUG: 2014-11-10 is this needed? Why? Run some tests without
          while len( tag_record_array[idx] ) > 0:
             temp = tag_record_array[idx].pop()
             if temp == "WC_TAG":
@@ -291,6 +366,9 @@ def edit_planner( ):
             tag_record_array[idx].append( "WC_TAG" )
             wc = False
          tag_record_array[idx].append( "TOPIC_TAG" )
+         
+         # Removes all tags from the following sentence,
+         # appends ACK_TAG, an acknowledgement for the running topic
          try:
             while len( tag_record_array[idx+1] ) > 0:
                temp = tag_record_array[idx+1].pop()
@@ -302,8 +380,12 @@ def edit_planner( ):
          except IndexError:
             pass
          tag_record_array[idx+1].append( "ACK_TAG" )
+         
+      # ENTRAIN_TAG check
       if tags.count( "ENTRAIN_TAG" ) > 0:
-         # ENTRAIN TAGS
+      
+         # Removes all tags from sentence
+         # DBUG: 2014-11-10 Is this needed? Try without.
          while len( tag_record_array[idx] ) > 0:
             temp = tag_record_array[idx].pop()
             if temp == "WC_TAG":
@@ -311,6 +393,8 @@ def edit_planner( ):
          if wc:
             tag_record_array[idx].append( "WC_TAG" )
             wc = False
+            
+         # Removes tags from following sentence
          try:
             while len( tag_record_array[idx+1] ) > 0:
                temp = tag_record_array[idx+1].pop()
@@ -321,6 +405,8 @@ def edit_planner( ):
                wc = False
          except IndexError:
             pass
+         
+         # Reapplies the ENTRAIN_TAG once other tags have been cleared
          tag_record_array[idx].append( "ENTRAIN_TAG" )
    
 def edit_applicator( ):
@@ -332,9 +418,12 @@ def edit_applicator( ):
    offset = 0
    ref = -1
    
+   array_len =  len(tagged_word_array)
+   
    #FIRST_TAG YEAH_TAG TOPIC_TAG ENTRAIN_TAG CONJ_TAG WC_TAG ACK_TAG
    # TODO: create a new array of sents for final output. output_sent_array 
    for (idx, sent) in enumerate( tagged_word_array ):
+     if idx < (array_len / 3): # NOTE: 2014-11-10 What does this do? Is this for blocking out a chunk of text for edits? 
       for tag in tag_record_array[idx-offset]:
          ref = idx-offset
          
