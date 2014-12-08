@@ -8,7 +8,6 @@
 ##
 ## editing: Points of interest are
 ##          labelled with DBUG or NOTE
-##
 ############################
 
 
@@ -483,7 +482,45 @@ def formatting_fixer( ):
             temp.append( word )
    
       formatted_output.append( temp )
-         
+      
+def chunk_text( chunk_size ):
+   global formatted_output
+   
+   word_count = 0
+   noun_set = set()
+   
+   if chunk_size > 0:
+      for idx, sent in enumerate(formatted_output):
+         word_count = word_count + len(sent)
+         if word_count >= chunk_size :
+            formatted_output.insert(idx, ['MARKER'])
+            word_count = 0
+   else:
+      for (idx,sent),pos in zip(enumerate(tagged_word_array),tagged_pos_array):
+         print pos
+         print sent
+         print "\n"
+      
+         # Sentence beings with pronoun, no marker
+         if pos[0] == 'PRP':
+            continue
+         # Sentence begins with adverb, insert marker
+         if pos[0].endswith('RB'):
+            formatted_output.insert(idx-1, ['MARKER'])
+         # Beings with DT, check for overlapping nouns
+         # IDEA: Maybe just change topic when pos[0] in sent before DT was PRP
+         if pos[0] == 'DT':
+            temp_noun_set = set()
+            for idx1, part in enumerate(pos):
+               if part.startswith('N'):
+                  temp_noun_set.add(sent[idx1])
+            noun_set = temp_noun_set & noun_set
+            if len(noun_set) == 0:
+               formatted_output.insert(idx-1, ['MARKER'])
+            #if tagged_pos_array[idx-1] == 'PRP':  
+            #   formatted_output.insert(idx-1, ['MARKER'])
+               
+               
 def generate_output( file ):
    global formatted_output
    num = 0
@@ -493,8 +530,13 @@ def generate_output( file ):
       os.makedirs( dir )
    f = open( file_name, "w" )
    
+   idx_offset = 0
    for idx, sent in enumerate( formatted_output ):
-      if (idx % 2) is 0:
+      idx = idx - idx_offset
+      if sent == ['MARKER']:
+         f.write( "{0}\n".format( ' '.join( sent ) ) )
+         idx_offset = idx_offset + 1
+      elif (idx % 2) is 0:
          num += 1
          f.write( "A{0}: {1}\n".format( num, ' '.join( sent ) ) )
       else:
@@ -543,10 +585,10 @@ if __name__ == '__main__':
    pronoun_replacer( )
    
    # Tags for conversational language which may already exist in the text
-   initial_tagging( )
+   #initial_tagging( )
    
    # Sets tags for lines where edits are possible
-   edit_tagging( )
+   #edit_tagging( )
    
    # Analyses the distribution of possible edits
    # TODO: This does not exist yet
@@ -555,30 +597,35 @@ if __name__ == '__main__':
    # Mixes up the edit tags in order to vary the output
    #edit_mixer( )
    
-   edit_planner( )
+   #edit_planner( )
    
-   edit_applicator( )
+   #edit_applicator( )
 
    formatting_fixer( )
+   
+   chunk_size = 0
+   chunk_text( chunk_size )
+   
+   print formatted_output
    
    generate_output( "{0}_standard".format( story_name[:-4] ) )
    
    print "Standard output complete"
-   
+   """
    for num in xrange(0, 5):
       reset( )
       process_text( open( story_name ).read() )
       pronoun_replacer( )
-      initial_tagging( )
-      edit_tagging( )
-      edit_mixer( )
-      edit_planner( )
-      edit_applicator( )
+      #initial_tagging( )
+      #edit_tagging( )
+      #edit_mixer( )
+      #edit_planner( )
+      #edit_applicator( )
       formatting_fixer( )
       generate_output( "{0}_{1}".format( story_name[:-4], num ) )
-     
+   """
    print "...done!"
-      
+    
    
    #for word_list in formatted_output:
    #  print "{0}\n".format( ' '.join( word_list ) )
